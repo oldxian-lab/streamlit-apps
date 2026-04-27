@@ -10,10 +10,72 @@ st.title("Stock Market Visualizer with Enhanced Analytics")
 st.sidebar.title("Options")
 
 # Helper Functions
-def fetch_stock_data(ticker, start_date, end_date):
-    """Fetch stock data using yfinance."""
-    stock = yf.Ticker(ticker)
-    return stock.history(start=start_date, end=end_date)
+import time
+from pathlib import Path
+
+import pandas as pd
+import streamlit as st
+import yfinance as yf
+from yfinance.exceptions import YFRateLimitError
+
+
+# Optional but helpful on Streamlit Cloud
+CACHE_DIR = Path(".cache/yfinance")
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+try:
+    yf.set_tz_cache_location(str(CACHE_DIR))
+except Exception:
+    pass
+
+
+@st.cache_data(ttl=60 * 30, show_spinner=False)
+def fetch_stock_data(ticker, start_date, end_date, max_retries=3):
+    """
+    Fetch historical stock data with caching and basic retry handling.
+
+    ttl=30 minutes prevents the app from calling Yahoo Finance on every rerun.
+    """
+    ticker = ticker.upper().strip()
+
+    if not ticker:
+        return pd.DataFrame()
+
+    for attempt in range(max_retries):
+        try:
+            data = yf.download(
+                ticker,
+                start=start_date,
+                end=end_date,
+                progress=False,
+                auto_adjust=False,
+                threads=False,
+            )
+
+            if data.empty:
+                return pd.DataFrame()
+
+            # yfinance sometimes returns multi-index columns
+            if isinstance(data.columns, pd.MultiIndex):
+                data.columns = data.columns.get_level_values(0)
+
+            return data
+
+        except YFRateLimitError:
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)
+            else:
+                st.warning(
+                    "Yahoo Finance is temporarily rate-limiting requests. "
+                    "Please wait a bit, try a shorter date range, or use cached data if available."
+                )
+                return pd.DataFrame()
+
+        except Exception as e:
+            st.error(f"Could not fetch data for {ticker}: {e}")
+            return pd.DataFrame()
+
+    return pd.DataFrame()
 
 def plot_candlestick(data):
     """Plot a candlestick chart."""
