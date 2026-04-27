@@ -30,7 +30,11 @@ except Exception:
 
 
 @st.cache_data(ttl=60 * 30, show_spinner=False)
-def fetch_stock_data(ticker, start_date, end_date, max_retries=3):
+def with st.spinner(f"Loading data for {ticker}..."):
+    data = fetch_stock_data(ticker, start_date, end_date)
+
+if data.empty:
+    st.stop() max_retries=3):
     """
     Fetch historical stock data with caching and basic retry handling.
 
